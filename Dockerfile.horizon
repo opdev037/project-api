@@ -1,0 +1,70 @@
+# Horizon Worker Dockerfile
+# 用於運行 Laravel Horizon Queue Worker
+
+# Stage 1: Composer 依賴安裝
+FROM composer:2.7 AS composer
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+
+# Stage 2: Horizon Worker
+FROM php:8.4-cli-alpine
+
+# 安裝系統依賴
+RUN apk add --no-cache \
+    postgresql-dev \
+    mysql-client \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    zip \
+    libzip-dev \
+    oniguruma-dev \
+    curl
+
+# 安裝 PHP 擴展
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+    pdo_mysql \
+    pdo_pgsql \
+    gd \
+    zip \
+    mbstring \
+    opcache \
+    pcntl
+
+# 安裝 Redis 擴展
+RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && apk del .build-deps
+
+# 設置工作目錄
+WORKDIR /var/www/html
+
+# 複製 Composer 依賴
+COPY --from=composer /app/vendor ./vendor
+
+# 複製應用程序代碼
+COPY . .
+
+# 複製 Composer
+COPY --from=composer /usr/bin/composer /usr/bin/composer
+
+# 生成優化的 autoload
+RUN composer dump-autoload --optimize --no-dev
+
+# 設置權限
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
+
+# PHP 配置優化
+RUN echo "memory_limit=256M" >> /usr/local/etc/php/conf.d/horizon.ini
+
+# 健康檢查 - 檢查 Horizon 是否正在運行
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
+    CMD php artisan horizon:status || exit 1
+
+# 啟動 Horizon
+CMD ["php", "artisan", "horizon"]
