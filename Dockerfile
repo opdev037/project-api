@@ -1,8 +1,10 @@
 # 多階段構建 - Stage 1: Composer 依賴安裝
 FROM composer:2.7 AS composer
 WORKDIR /app
-COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+COPY composer.json ./
+COPY composer.lock* ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist || \
+    composer update --no-dev --no-scripts --no-autoloader --prefer-dist
 
 # Stage 2: 最終運行階段
 FROM php:8.4-fpm-alpine
