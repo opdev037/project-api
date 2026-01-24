@@ -68,5 +68,5 @@ RUN echo "memory_limit=256M" >> /usr/local/etc/php/conf.d/horizon.ini
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
     CMD pgrep -f "queue:work" || exit 1
 
-# 啟動 Queue Worker
-CMD ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
+# 啟動 Queue Worker (監聽 emails 和 default queue)
+CMD ["php", "artisan", "queue:work", "redis", "--queue=emails,default", "--sleep=3", "--tries=3", "--max-time=3600"]
