@@ -1,5 +1,5 @@
-# Horizon Worker Dockerfile
-# 用於運行 Laravel Horizon Queue Worker
+# Queue Worker Dockerfile
+# 用於運行 Laravel Queue Worker
 
 # Stage 1: Composer 依賴安裝
 FROM composer:2.7 AS composer
@@ -64,9 +64,9 @@ RUN chown -R www-data:www-data /var/www/html \
 # PHP 配置優化
 RUN echo "memory_limit=256M" >> /usr/local/etc/php/conf.d/horizon.ini
 
-# 健康檢查 - 檢查 Horizon 是否正在運行
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-    CMD php artisan horizon:status || exit 1
+# 健康檢查 - 檢查進程是否存活
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s \
+    CMD pgrep -f "queue:work" || exit 1
 
-# 啟動 Horizon
-CMD ["php", "artisan", "horizon"]
+# 啟動 Queue Worker
+CMD ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600"]
