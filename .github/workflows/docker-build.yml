@@ -106,12 +106,16 @@ jobs:
 
     steps:
       - name: Deploy to Kubernetes
+        env:
+          KUBECONFIG: /home/github-runner/.kube/config
         run: |
           echo "開始部署到 K8s..."
           kubectl rollout restart deployment/api -n web-app
           kubectl rollout restart deployment/horizon -n web-app
 
       - name: Wait for rollout to complete
+        env:
+          KUBECONFIG: /home/github-runner/.kube/config
         run: |
           echo "等待部署完成..."
           kubectl rollout status deployment/api -n web-app --timeout=120s
