@@ -97,3 +97,23 @@ jobs:
           labels: ${{ steps.meta-horizon.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # 自動部署到 K8s
+  deploy:
+    needs: [build-api, build-horizon]
+    runs-on: self-hosted
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Deploy to Kubernetes
+        run: |
+          echo "開始部署到 K8s..."
+          kubectl rollout restart deployment/api -n web-app
+          kubectl rollout restart deployment/horizon -n web-app
+
+      - name: Wait for rollout to complete
+        run: |
+          echo "等待部署完成..."
+          kubectl rollout status deployment/api -n web-app --timeout=120s
+          kubectl rollout status deployment/horizon -n web-app --timeout=120s
+          echo "部署完成！"
