@@ -2,109 +2,159 @@ name: Build and Deploy API
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, develop ]
 
 env:
-  REGION: asia-east1
   REGISTRY: asia-east1-docker.pkg.dev
-  API_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-api
-  HORIZON_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-horizon
+  GKE_API_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-api
+  GKE_HORIZON_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-horizon
+  DOCKERHUB_API_IMAGE: ${{ secrets.DOCKER_USERNAME }}/project-api
+  DOCKERHUB_HORIZON_IMAGE: ${{ secrets.DOCKER_USERNAME }}/project-horizon
 
 jobs:
-  build-api:
+  # ============================================
+  # 測試環境 (develop → Docker Hub → 地端 Kubeadm)
+  # ============================================
+  build-api-staging:
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Login to Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.API_IMAGE }}:latest
+          push: true
+          tags: ${{ env.DOCKERHUB_API_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  build-horizon:
+  build-horizon-staging:
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-
-      - name: Login to Artifact Registry
-        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Build and push Horizon image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile.horizon
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ env.HORIZON_IMAGE }}:latest
+          push: true
+          tags: ${{ env.DOCKERHUB_HORIZON_IMAGE }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # 自動部署到 GKE
-  deploy:
-    needs: [build-api, build-horizon]
-    runs-on: ubuntu-latest
+  deploy-staging:
+    needs: [build-api-staging, build-horizon-staging]
+    if: github.ref == 'refs/heads/develop'
+    runs-on: self-hosted
+    steps:
+      - name: Deploy to Staging (Kubeadm)
+        env:
+          KUBECONFIG: /home/github-runner/.kube/config
+        run: |
+          echo "部署到測試環境..."
+          kubectl rollout restart deployment/api -n web-app
+          kubectl rollout restart deployment/horizon -n web-app
+      - name: Wait for rollout
+        env:
+          KUBECONFIG: /home/github-runner/.kube/config
+        run: |
+          kubectl rollout status deployment/api -n web-app --timeout=120s
+          kubectl rollout status deployment/horizon -n web-app --timeout=120s
+          echo "測試環境部署完成！"
+
+  # ============================================
+  # 正式環境 (main → Artifact Registry → GKE)
+  # ============================================
+  build-api-production:
     if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Login to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.GKE_API_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
+  build-horizon-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Login to Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push Horizon image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.horizon
+          push: true
+          tags: ${{ env.GKE_HORIZON_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-production:
+    needs: [build-api-production, build-horizon-production]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: gke-test-cluster-1
           location: asia-east1
-
-      - name: Deploy to GKE
+      - name: Deploy to Production (GKE)
         run: |
-          echo "開始部署到 GKE..."
+          echo "部署到正式環境..."
           kubectl rollout restart deployment/api -n web-app
           kubectl rollout restart deployment/horizon -n web-app
-
       - name: Wait for rollout
         run: |
-          echo "等待部署完成..."
           kubectl rollout status deployment/api -n web-app --timeout=120s
           kubectl rollout status deployment/horizon -n web-app --timeout=120s
-          echo "API 部署完成！"
+          echo "正式環境部署完成！"
