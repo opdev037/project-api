@@ -155,6 +155,7 @@ jobs:
           kubectl rollout restart deployment/horizon -n web-app
       - name: Wait for rollout
         run: |
-          kubectl rollout status deployment/api -n web-app --timeout=120s
-          kubectl rollout status deployment/horizon -n web-app --timeout=120s
+          # GKE Autopilot 節點擴展較慢，加長 timeout 避免誤判部署失敗
+          kubectl rollout status deployment/api -n web-app --timeout=300s
+          kubectl rollout status deployment/horizon -n web-app --timeout=300s
           echo "正式環境部署完成！"
