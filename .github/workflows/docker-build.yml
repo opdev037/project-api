@@ -8,8 +8,8 @@ on:
 
 env:
   REGISTRY: asia-east1-docker.pkg.dev
-  GKE_API_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-api
-  GKE_HORIZON_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/bukenon/project-horizon
+  GKE_API_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gke-test-1/project-api
+  GKE_HORIZON_IMAGE: asia-east1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/gke-test-1/project-horizon
   DOCKERHUB_API_IMAGE: ${{ secrets.DOCKER_USERNAME }}/project-api
   DOCKERHUB_HORIZON_IMAGE: ${{ secrets.DOCKER_USERNAME }}/project-horizon
 
