@@ -6,8 +6,10 @@ FROM composer:2.7 AS composer
 WORKDIR /app
 COPY composer.json ./
 COPY composer.lock* ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist || \
-    composer update --no-dev --no-scripts --no-autoloader --prefer-dist
+# --ignore-platform-reqs：composer 這個 stage 本身沒有 ext-rdkafka，
+# 但實際擴展會在 Stage 2 安裝，這裡只負責解析/下載套件
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs || \
+    composer update --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 # Stage 2: Horizon Worker
 FROM php:8.4-cli-alpine
@@ -35,10 +37,12 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     opcache \
     pcntl
 
-# 安裝 Redis 擴展
-RUN apk add --no-cache --virtual .build-deps $PHPIZE_DEPS \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+# 安裝 Redis + Kafka 擴展
+# librdkafka 為 rdkafka 擴展的執行期依賴，需保留（不能跟著 build-deps 一起刪除）
+RUN apk add --no-cache librdkafka \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS librdkafka-dev \
+    && pecl install redis rdkafka \
+    && docker-php-ext-enable redis rdkafka \
     && apk del .build-deps
 
 # 設置工作目錄

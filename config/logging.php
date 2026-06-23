@@ -123,6 +123,12 @@ return [
             'handler' => NullHandler::class,
         ],
 
+        'kafka' => [
+            'driver' => 'custom',
+            'via' => \App\Logging\CreateKafkaLogger::class,
+            'level' => 'debug',
+        ],
+
         'emergency' => [
             'path' => storage_path('logs/laravel.log'),
         ],
