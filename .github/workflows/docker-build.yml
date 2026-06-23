@@ -1,10 +1,12 @@
 name: Build and Deploy API
 
 on:
+  # GCP 免費試用已到期，production（main）相關 job 暫停觸發。
+  # 之後恢復 GCP 資源後，把 main 加回來即可重新啟用。
   push:
-    branches: [ main, develop ]
+    branches: [ develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ develop ]
 
 env:
   REGISTRY: asia-east1-docker.pkg.dev
